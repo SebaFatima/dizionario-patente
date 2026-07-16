@@ -142,7 +142,9 @@
   // Load signs.csv when the page opens
   async function loadSigns() {
     try {
-      const response = await fetch("signs.csv");
+const response = await fetch("signs.csv", {
+  cache: "no-store"
+});
 
       if (!response.ok) {
         throw new Error("Non riesco a trovare signs.csv");
