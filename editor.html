@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Editor Dizionario Patente</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #222;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 12px;
+      background: white;
+      border-bottom: 1px solid #ddd;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 22px;
+    }
+
+    .top-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button,
+    .link-button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .primary {
+      background: #1769aa;
+      color: white;
+    }
+
+    .secondary {
+      background: #e5e7eb;
+      color: #222;
+    }
+
+    .danger {
+      background: #b42318;
+      color: white;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: calc(100vh - 130px);
+    }
+
+    aside {
+      padding: 12px;
+      border-right: 1px solid #ddd;
+      background: #fafafa;
+    }
+
+    #search {
+      width: 100%;
+      padding: 11px;
+      margin-bottom: 10px;
+      font-size: 16px;
+      border: 1px solid #aaa;
+      border-radius: 8px;
+    }
+
+    #signList {
+      display: grid;
+      gap: 7px;
+    }
+
+    .sign-item {
+      width: 100%;
+      text-align: left;
+      padding: 10px;
+      background: white;
+      color: #222;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+
+    .sign-item.active {
+      border-color: #1769aa;
+      box-shadow: 0 0 0 2px rgba(23, 105, 170, 0.15);
+    }
+
+    .sign-item.modified::after {
+      content: " • modificato";
+      color: #b42318;
+      font-weight: bold;
+    }
+
+    .sign-category {
+      display: block;
+      margin-top: 3px;
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    #editorArea {
+      padding: 18px;
+    }
+
+    .empty-message {
+      padding: 20px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+    }
+
+    .editor-card {
+      max-width: 850px;
+      margin: 0 auto;
+      padding: 18px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+    }
+
+    #imagePreview {
+      display: block;
+      width: 100%;
+      max-width: 230px;
+      height: 180px;
+      margin: 0 auto 18px;
+      object-fit: contain;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      margin-top: 5px;
+      padding: 10px;
+      font: inherit;
+      border: 1px solid #aaa;
+      border-radius: 8px;
+      background: white;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+
+    #quickInput {
+      min-height: 90px;
+    }
+
+    #explanationInput {
+      min-height: 180px;
+    }
+
+    .small-note {
+      margin: 12px 0 0;
+      font-size: 12px;
+      color: #666;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        display: block;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid #ddd;
+      }
+
+      #signList {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-height: 250px;
+        overflow-y: auto;
+      }
+
+      .sign-item {
+        font-size: 12px;
+      }
+
+      #editorArea {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Editor Dizionario Patente</h1>
+
+    <div class="top-buttons">
+      <a class="link-button secondary" href="index.html">← Dizionario</a>
+
+      <button id="downloadButton" class="primary">
+        Scarica signs.csv aggiornato
+      </button>
+
+      <button id="reloadButton" class="secondary">
+        Riparti dal CSV online
+      </button>
+
+      <button id="clearButton" class="danger">
+        Cancella bozza locale
+      </button>
+    </div>
+
+    <div id="status">Caricamento…</div>
+  </header>
+
+  <main>
+    <aside>
+      <input
+        id="search"
+        type="search"
+        placeholder="Cerca un segnale..."
+        autocomplete="off"
+      >
+
+      <div id="signList"></div>
+    </aside>
+
+    <section id="editorArea">
+      <div class="empty-message">
+        Seleziona un segnale per modificarlo.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const CSV_FILE = "signs.csv";
+
+    const STORAGE_DRAFT = "patenteEditorDraft";
+    const STORAGE_MODIFIED = "patenteEditorModified";
+    const STORAGE_TIME = "patenteEditorLastSaved";
+
+    const searchInput = document.getElementById("search");
+    const signList = document.getElementById("signList");
+    const editorArea = document.getElementById("editorArea");
+    const statusArea = document.getElementById("status");
+
+    const downloadButton = document.getElementById("downloadButton");
+    const reloadButton = document.getElementById("reloadButton");
+    const clearButton = document.getElementById("clearButton");
+
+    let headers = [];
+    let signs = [];
+    let selectedIndex = null;
+    let modifiedIndexes = new Set();
+    let saveTimer = null;
+
+    function parseCSV(text) {
+      text = text.replace(/^\uFEFF/, "");
+
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let insideQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const character = text[i];
+        const nextCharacter = text[i + 1];
+
+        if (character === '"') {
+          if (insideQuotes && nextCharacter === '"') {
+            cell += '"';
+            i++;
+          } else {
+            insideQuotes = !insideQuotes;
+          }
+        } else if (character === "," && !insideQuotes) {
+          row.push(cell);
+          cell = "";
+        } else if (
+          (character === "\n" || character === "\r") &&
+          !insideQuotes
+        ) {
+          if (character === "\r" && nextCharacter === "\n") {
+            i++;
+          }
+
+          row.push(cell);
+
+          if (row.some(value => value.trim() !== "")) {
+            rows.push(row);
+          }
+
+          row = [];
+          cell = "";
+        } else {
+          cell += character;
+        }
+      }
+
+      row.push(cell);
+
+      if (row.some(value => value.trim() !== "")) {
+        rows.push(row);
+      }
+
+      if (rows.length === 0) {
+        return { headers: [], records: [] };
+      }
+
+      const parsedHeaders = rows[0].map(value => value.trim());
+
+      const records = rows.slice(1).map(values => {
+        const record = {};
+
+        parsedHeaders.forEach((header, index) => {
+          record[header] = (values[index] || "").trim();
+        });
+
+        return record;
+      });
+
+      return {
+        headers: parsedHeaders,
+        records
+      };
+    }
+
+    function escapeHTML(text) {
+      return String(text || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function normalizeText(text) {
+      return String(text || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return "nessun salvataggio";
+
+      return new Date(timestamp).toLocaleString("it-IT", {
+        dateStyle: "short",
+        timeStyle: "short"
+      });
+    }
+
+    function updateStatus(message = "") {
+      const lastSaved = localStorage.getItem(STORAGE_TIME);
+      const count = modifiedIndexes.size;
+
+      statusArea.textContent =
+        `${message ? message + " — " : ""}` +
+        `${count} segnali modificati — ` +
+        `ultimo salvataggio: ${formatTime(lastSaved)}`;
+    }
+
+    function saveDraftNow() {
+      localStorage.setItem(STORAGE_DRAFT, JSON.stringify({
+        headers,
+        signs
+      }));
+
+      localStorage.setItem(
+        STORAGE_MODIFIED,
+        JSON.stringify([...modifiedIndexes])
+      );
+
+      localStorage.setItem(
+        STORAGE_TIME,
+        new Date().toISOString()
+      );
+
+      updateStatus("Bozza salvata automaticamente");
+    }
+
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+
+      saveTimer = setTimeout(() => {
+        saveDraftNow();
+      }, 300);
+    }
+
+    function renderList() {
+      const searchedWords = normalizeText(searchInput.value)
+        .split(/\s+/)
+        .filter(Boolean);
+
+      const visibleSigns = signs
+        .map((sign, index) => ({ sign, index }))
+        .filter(({ sign }) => {
+          const searchable = normalizeText(
+            `${sign["Categoria"]} ${sign["Nome"]}`
+          );
+
+          return searchedWords.every(word =>
+            searchable.includes(word)
+          );
+        });
+
+      signList.innerHTML = visibleSigns.map(({ sign, index }) => {
+        const activeClass =
+          index === selectedIndex ? "active" : "";
+
+        const modifiedClass =
+          modifiedIndexes.has(index) ? "modified" : "";
+
+        return `
+          <button
+            class="sign-item ${activeClass} ${modifiedClass}"
+            data-index="${index}"
+          >
+            ${escapeHTML(sign["Nome"])}
+            <span class="sign-category">
+              ${escapeHTML(sign["Categoria"])}
+            </span>
+          </button>
+        `;
+      }).join("");
+
+      signList.querySelectorAll(".sign-item").forEach(button => {
+        button.addEventListener("click", () => {
+          selectedIndex = Number(button.dataset.index);
+          renderList();
+          renderEditor();
+        });
+      });
+    }
+
+    function createField(label, id, value, isTextarea = false) {
+      const safeValue = escapeHTML(value);
+
+      if (isTextarea) {
+        return `
+          <label for="${id}">${label}</label>
+          <textarea id="${id}">${safeValue}</textarea>
+        `;
+      }
+
+      return `
+        <label for="${id}">${label}</label>
+        <input id="${id}" type="text" value="${safeValue}">
+      `;
+    }
+
+    function renderEditor() {
+      if (selectedIndex === null || !signs[selectedIndex]) {
+        editorArea.innerHTML = `
+          <div class="empty-message">
+            Seleziona un segnale per modificarlo.
+          </div>
+        `;
+        return;
+      }
+
+      const sign = signs[selectedIndex];
+
+      editorArea.innerHTML = `
+        <div class="editor-card">
+          <img
+            id="imagePreview"
+            src="${escapeHTML(sign["Link immagine"])}"
+            alt="${escapeHTML(sign["Nome"])}"
+          >
+
+          ${createField(
+            "Categoria",
+            "categoryInput",
+            sign["Categoria"]
+          )}
+
+          ${createField(
+            "Nome",
+            "nameInput",
+            sign["Nome"]
+          )}
+
+          ${createField(
+            "Istruzione rapida",
+            "quickInput",
+            sign["Istruzione rapida"],
+            true
+          )}
+
+          ${createField(
+            "Spiegazione completa",
+            "explanationInput",
+            sign["Spiegazione completa"],
+            true
+          )}
+
+          ${createField(
+            "Parole chiave",
+            "keywordsInput",
+            sign["Parole chiave"],
+            true
+          )}
+
+          ${createField(
+            "Link immagine",
+            "imageInput",
+            sign["Link immagine"]
+          )}
+
+          ${createField(
+            "Fonte normativa",
+            "sourceInput",
+            sign["Fonte normativa"]
+          )}
+
+          <p class="small-note">
+            Le modifiche vengono salvate automaticamente solo su questo
+            dispositivo e in questo browser.
+          </p>
+        </div>
+      `;
+
+      const bindings = [
+        ["categoryInput", "Categoria"],
+        ["nameInput", "Nome"],
+        ["quickInput", "Istruzione rapida"],
+        ["explanationInput", "Spiegazione completa"],
+        ["keywordsInput", "Parole chiave"],
+        ["imageInput", "Link immagine"],
+        ["sourceInput", "Fonte normativa"]
+      ];
+
+      bindings.forEach(([elementId, columnName]) => {
+        const element = document.getElementById(elementId);
+
+        element.addEventListener("input", () => {
+          signs[selectedIndex][columnName] = element.value;
+          modifiedIndexes.add(selectedIndex);
+
+          if (columnName === "Link immagine") {
+            document.getElementById("imagePreview").src =
+              element.value;
+          }
+
+          renderList();
+          scheduleSave();
+        });
+      });
+    }
+
+    function csvEscape(value) {
+      const text = String(value ?? "");
+
+      if (
+        text.includes(",") ||
+        text.includes('"') ||
+        text.includes("\n") ||
+        text.includes("\r")
+      ) {
+        return `"${text.replaceAll('"', '""')}"`;
+      }
+
+      return text;
+    }
+
+    function makeCSV() {
+      const rows = [];
+
+      rows.push(headers.map(csvEscape).join(","));
+
+      signs.forEach(sign => {
+        const row = headers.map(header =>
+          csvEscape(sign[header] || "")
+        );
+
+        rows.push(row.join(","));
+      });
+
+      return "\uFEFF" + rows.join("\r\n");
+    }
+
+    function downloadCSV() {
+      saveDraftNow();
+
+      const csv = makeCSV();
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8"
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "signs.csv";
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+
+      updateStatus("CSV scaricato; la bozza locale non è stata cancellata");
+    }
+
+    async function loadOnlineCSV() {
+      const response = await fetch(CSV_FILE, {
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error("Non riesco a caricare signs.csv");
+      }
+
+      const text = await response.text();
+      const parsed = parseCSV(text);
+
+      headers = parsed.headers;
+      signs = parsed.records;
+      selectedIndex = null;
+      modifiedIndexes = new Set();
+
+      renderList();
+      renderEditor();
+      updateStatus("Caricato il CSV online");
+    }
+
+    async function startEditor() {
+      const savedDraft = localStorage.getItem(STORAGE_DRAFT);
+      const savedModified =
+        localStorage.getItem(STORAGE_MODIFIED);
+
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+
+          headers = parsed.headers;
+          signs = parsed.signs;
+
+          modifiedIndexes = new Set(
+            savedModified ? JSON.parse(savedModified) : []
+          );
+
+          renderList();
+          renderEditor();
+          updateStatus("Bozza locale ripristinata");
+          return;
+        } catch (error) {
+          console.error("Bozza locale non leggibile:", error);
+        }
+      }
+
+      await loadOnlineCSV();
+    }
+
+    searchInput.addEventListener("input", renderList);
+
+    downloadButton.addEventListener("click", downloadCSV);
+
+    reloadButton.addEventListener("click", async () => {
+      const confirmed = confirm(
+        "Vuoi eliminare la bozza locale e ricaricare il file signs.csv pubblicato online?"
+      );
+
+      if (!confirmed) return;
+
+      localStorage.removeItem(STORAGE_DRAFT);
+      localStorage.removeItem(STORAGE_MODIFIED);
+      localStorage.removeItem(STORAGE_TIME);
+
+      await loadOnlineCSV();
+    });
+
+    clearButton.addEventListener("click", () => {
+      const confirmed = confirm(
+        "Vuoi cancellare definitivamente la bozza salvata in questo browser?"
+      );
+
+      if (!confirmed) return;
+
+      localStorage.removeItem(STORAGE_DRAFT);
+      localStorage.removeItem(STORAGE_MODIFIED);
+      localStorage.removeItem(STORAGE_TIME);
+
+      location.reload();
+    });
+
+    startEditor().catch(error => {
+      statusArea.textContent = "Errore";
+
+      editorArea.innerHTML = `
+        <div class="empty-message">
+          <strong>Non riesco ad aprire l'editor.</strong><br><br>
+          ${escapeHTML(error.message)}
+        </div>
+      `;
+    });
+  </script>
+</body>
+</html>
