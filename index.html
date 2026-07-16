@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>Dizionario Patente</title>
+</head>
+
+<body>
+
+  <h1>Dizionario Patente</h1>
+
+  <input
+    id="search"
+    type="text"
+    placeholder="Cerca un segnale..."
+  >
+
+  <div id="cards"></div>
+
+  <script>
+   <script>
+  const searchBox = document.getElementById("search");
+  const cardsArea = document.getElementById("cards");
+
+  let allSigns = [];
+
+  // Load signs.csv when the page opens
+  async function loadSigns() {
+    try {
+      const response = await fetch("signs.csv");
+
+      if (!response.ok) {
+        throw new Error("Non riesco a trovare signs.csv");
+      }
+
+      const csvText = await response.text();
+
+      allSigns = parseCSV(csvText);
+
+      // Show every sign initially
+      showSigns(allSigns);
+    } catch (error) {
+      cardsArea.innerHTML = `
+        <p>Errore: ${error.message}</p>
+      `;
+    }
+  }
+
+  // Convert the CSV rows into JavaScript objects
+  function parseCSV(csvText) {
+    // Removes an invisible character sometimes added by Excel
+    csvText = csvText.replace(/^\uFEFF/, "");
+
+    const rows = [];
+    let currentRow = [];
+    let currentCell = "";
+    let insideQuotes = false;
+
+    for (let i = 0; i < csvText.length; i++) {
+      const character = csvText[i];
+      const nextCharacter = csvText[i + 1];
+
+      if (character === '"') {
+        // Two quotation marks inside a quoted cell mean one quotation mark
+        if (insideQuotes && nextCharacter === '"') {
+          currentCell += '"';
+          i++;
+        } else {
+          insideQuotes = !insideQuotes;
+        }
+      } else if (character === "," && !insideQuotes) {
+        currentRow.push(currentCell);
+        currentCell = "";
+      } else if (
+        (character === "\n" || character === "\r") &&
+        !insideQuotes
+      ) {
+        if (character === "\r" && nextCharacter === "\n") {
+          i++;
+        }
+
+        currentRow.push(currentCell);
+
+        if (currentRow.some(cell => cell.trim() !== "")) {
+          rows.push(currentRow);
+        }
+
+        currentRow = [];
+        currentCell = "";
+      } else {
+        currentCell += character;
+      }
+    }
+
+    // Add the final row
+    currentRow.push(currentCell);
+
+    if (currentRow.some(cell => cell.trim() !== "")) {
+      rows.push(currentRow);
+    }
+
+    const columnNames = rows[0];
+
+    return rows.slice(1).map(row => {
+      const sign = {};
+
+      columnNames.forEach((columnName, position) => {
+        sign[columnName.trim()] = (row[position] || "").trim();
+      });
+
+      return sign;
+    });
+  }
+
+  // Protect the page when displaying text from the CSV
+  function escapeHTML(text) {
+    return String(text || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  // Display several sign cards at the same time
+  function showSigns(signs) {
+    if (signs.length === 0) {
+      cardsArea.innerHTML = "<p>Nessun segnale trovato.</p>";
+      return;
+    }
+
+    cardsArea.innerHTML = signs.map(sign => {
+      return `
+        <article class="card">
+
+          <img
+            src="${escapeHTML(sign["Link immagine"])}"
+            alt="${escapeHTML(sign["Nome"])}"
+          >
+
+          <p class="category">
+            ${escapeHTML(sign["Categoria"])}
+          </p>
+
+          <h2>
+            ${escapeHTML(sign["Nome"])}
+          </h2>
+
+          <p class="quick-instruction">
+            ${escapeHTML(sign["Istruzione rapida"])}
+          </p>
+
+          <details>
+            <summary>Spiegazione completa</summary>
+
+            <p>
+              ${escapeHTML(sign["Spiegazione completa"])}
+            </p>
+
+            <p class="keywords">
+              <strong>Parole chiave:</strong>
+              ${escapeHTML(sign["Parole chiave"])}
+            </p>
+          </details>
+
+        </article>
+      `;
+    }).join("");
+  }
+
+  // Make searches work with accents and capital letters
+  function normalizeText(text) {
+    return String(text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function searchSigns() {
+    const searchedWords = normalizeText(searchBox.value)
+      .split(/\s+/)
+      .filter(word => word !== "");
+
+    const results = allSigns.filter(sign => {
+      const searchableText = normalizeText(`
+        ${sign["Categoria"]}
+        ${sign["Nome"]}
+        ${sign["Istruzione rapida"]}
+        ${sign["Spiegazione completa"]}
+        ${sign["Parole chiave"]}
+      `);
+
+      // Every typed word must appear somewhere in the record
+      return searchedWords.every(word =>
+        searchableText.includes(word)
+      );
+    });
+
+    showSigns(results);
+  }
+
+  searchBox.addEventListener("input", searchSigns);
+
+  loadSigns();
+</script>
+  </script>
+
+</body>
+</html>
